@@ -1,0 +1,15 @@
+services:
+  localstack:
+    image: localstack/localstack:3.8
+    container_name: taskflow-localstack
+    ports:
+      - '4566:4566'
+    environment:
+      SERVICES: sns,sqs,dynamodb,ses
+      DEBUG: '0'
+      PERSISTENCE: '1'
+    volumes:
+      - taskflow-localstack:/var/lib/localstack
+
+volumes:
+  taskflow-localstack:
