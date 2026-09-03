@@ -40,5 +40,5 @@ public class JwtClaimsConverter implements Converter<Jwt, AbstractAuthentication
                 jwt,
                 List.of(new SimpleGrantedAuthority("ROLE_" + role)));
     }
-    /** just a comment */
+
 }

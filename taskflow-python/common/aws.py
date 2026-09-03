@@ -36,5 +36,5 @@ def resource(service: str):
         region_name=cfg.aws_region,
         endpoint_url=cfg.aws_endpoint_url or None,
         config=_BOTO_CONFIG,
-        # want to run so new change
+    
     )
