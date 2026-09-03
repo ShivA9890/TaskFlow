@@ -1,0 +1,25 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Never fetched: these tests call the service layer directly rather
+          # than going through HTTP, so no token is ever verified.
+          jwk-set-uri: http://localhost:8081/api/v1/auth/.well-known/jwks.json
+          issuer-uri: http://localhost:8081
+
+taskflow:
+  reminder:
+    stall-window: 48h
+  internal:
+    service-token: test-service-token
+
+logging:
+  level:
+    org.flywaydb: warn
+    org.hibernate: warn

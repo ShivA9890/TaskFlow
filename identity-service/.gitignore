@@ -5,3 +5,5 @@ keys/
 .vscode/
 .DS_Store
 *.iml
+
+!src/test/resources/test-jwt-private.pem

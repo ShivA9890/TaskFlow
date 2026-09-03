@@ -1,0 +1,23 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+taskflow:
+  seed: false          # DevSeeder must not run in tests
+  jwt:
+    private-key-location: classpath:test-jwt-private.pem
+    key-id: test-key
+    issuer: http://localhost:8081
+    access-token-ttl: 15m
+    refresh-token-ttl: 30d
+  invite:
+    ttl: 7d
+    accept-base-url: http://localhost:5173/accept-invite
+
+logging:
+  level:
+    org.flywaydb: warn
+    org.hibernate: warn
