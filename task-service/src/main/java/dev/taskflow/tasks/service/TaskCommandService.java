@@ -41,6 +41,9 @@ public class TaskCommandService {
 
     @Transactional
     public TaskResponse create(TokenClaims claims, UUID boardId, CreateTaskRequest request) {
+        if(!claims.isAdmin()){
+            throw ApiException.forbidden("Only admin can create tasks");
+        }
         Board board = boardService.requireBoard(claims, boardId);
         BoardColumn column = requireColumn(boardId, request.columnId());
 

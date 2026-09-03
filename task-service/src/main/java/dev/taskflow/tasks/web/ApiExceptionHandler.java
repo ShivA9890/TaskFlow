@@ -7,9 +7,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.orm.jpa.JpaSystemException;
 
 import java.util.Map;
 
@@ -48,11 +50,24 @@ public class ApiExceptionHandler {
      * Surfaces the column-bounds trigger. The message comes from the database, so
      * the rule has exactly one wording wherever it is violated.
      */
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<Map<String, String>> onConstraint(DataIntegrityViolationException e) {
-        String root = e.getMostSpecificCause().getMessage();
-        if (root != null && root.contains("columns")) {
-            String cleaned = root.lines().findFirst().orElse(root)
+    /**
+     * Surfaces the column-bounds trigger.
+     *
+     * A deferred constraint trigger fires during COMMIT, not during a statement, so
+     * Spring wraps it as JpaSystemException rather than DataIntegrityViolationException.
+     * Both are handled here, and the message comes from the database so the rule has
+     * one wording wherever it is violated.
+     */
+    @ExceptionHandler({DataIntegrityViolationException.class, JpaSystemException.class})
+    public ResponseEntity<Map<String, String>> onConstraint(Exception e) {
+        Throwable root = e;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String message = root.getMessage();
+
+        if (message != null && message.contains("columns")) {
+            String cleaned = message.lines().findFirst().orElse(message)
                     .replaceFirst("^ERROR:\\s*", "").trim();
             return body(HttpStatus.UNPROCESSABLE_ENTITY, cleaned);
         }

@@ -15,7 +15,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.jpa.JpaSystemException;
 
+import org.springframework.orm.jpa.JpaSystemException;
 import java.util.List;
 import java.util.UUID;
 
@@ -45,21 +47,23 @@ class BoardRulesTest extends IntegrationTest {
                 new CreateBoardRequest("Platform", null, List.of(columnNames)));
     }
 
-    @Test
-    void aBoardWithFewerThanThreeColumnsIsRejected() {
+     @Test
+    void aBoardWithFewerThanThreeColumnsIsRejectedByTheDatabase() {
+        // The trigger is deferred, so it fires at COMMIT rather than on the insert.
+        // Spring surfaces that as JpaSystemException; ApiExceptionHandler maps it to
+        // a 422 for callers coming through HTTP.
         assertThatThrownBy(() -> createBoard("To do", "Done"))
-                .isInstanceOf(ApiException.class)
-                .extracting(e -> ((ApiException) e).getStatus())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isInstanceOf(JpaSystemException.class)
+                .hasStackTraceContaining("A board needs at least 3 columns.");
     }
 
-    @Test
-    void aBoardWithMoreThanSixColumnsIsRejected() {
+     @Test
+    void aBoardWithMoreThanSixColumnsIsRejectedByTheDatabase() {
         assertThatThrownBy(() ->
                 createBoard("C1", "C2", "C3", "C4", "C5", "C6", "C7"))
-                .isInstanceOf(ApiException.class);
+                .isInstanceOf(JpaSystemException.class)
+                .hasStackTraceContaining("at most 6 columns");
     }
-
     @Test
     void aSeventhColumnCannotBeAddedToAFullBoard() {
         BoardResponse board = createBoard("C1", "C2", "C3", "C4", "C5", "C6");
