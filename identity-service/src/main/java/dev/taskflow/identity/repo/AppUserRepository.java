@@ -20,4 +20,5 @@ public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
     List<AppUser> findAllByOrganizationIdOrderByNameAsc(UUID orgId);
 
     List<AppUser> findAllByOrganizationIdAndRole(UUID orgId, Role role);
+    /* jst a comment */
 }

@@ -90,7 +90,7 @@ def publish_batch(source: str, dsn: str, sns, topic_arn: str) -> int:
         conn.commit()
 
     return published
-
+# just a comment
 
 def run_once() -> int:
     cfg = settings()
