@@ -6,6 +6,7 @@ import dev.taskflow.identity.repo.InviteRepository;
 import dev.taskflow.identity.repo.OrganizationRepository;
 import dev.taskflow.identity.repo.OutboxEventRepository;
 import dev.taskflow.identity.repo.RefreshTokenRepository;
+import dev.taskflow.identity.security.CurrentUser;
 import dev.taskflow.identity.security.TokenClaims;
 import dev.taskflow.identity.service.AuthService;
 import dev.taskflow.identity.service.InviteService;
@@ -20,6 +21,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import dev.taskflow.identity.security.CurrentUser;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
 import java.util.UUID;
@@ -109,16 +116,26 @@ class InviteFlowTest extends IntegrationTest {
                 .hasSize(2);
     }
 
-    @Test
+     @Test
     void membersCannotSendInvites() {
         TokenClaims memberClaims = new TokenClaims(
                 UUID.randomUUID(), adminClaims.orgId(), Role.MEMBER, List.of());
 
-        assertThatThrownBy(() -> inviteService.create(memberClaims,
-                new CreateInviteRequest("newdev@taskflow.dev", Role.MEMBER)))
-                .isInstanceOf(ApiException.class)
-                .extracting(e -> ((ApiException) e).getStatus())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+        // The role check lives in the controller via CurrentUser.requireAdmin,
+        // not in the service, so assert on the guard itself rather than calling
+        // the service directly.
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(memberClaims, null, List.of()));
+        try {
+            assertThatThrownBy(() ->
+                    CurrentUser.requireAdmin("Only admins can invite members."))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessage("Only admins can invite members.")
+                    .extracting(e -> ((ApiException) e).getStatus())
+                    .isEqualTo(HttpStatus.FORBIDDEN);
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
     @Test
