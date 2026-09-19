@@ -1,0 +1,252 @@
+pipeline {
+    agent none
+
+    environment{
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Code Clone') {
+            agent { label 'node1 || node2' }
+            steps {
+                echo 'Cloning the Code from github'
+                git branch: 'main', url: 'https://github.com/ShivA9890/TaskFlow.git'
+                echo 'Zipping the repository...'
+                sh 'zip -rq repo-snapshot.zip .'
+                echo 'Stashing the single zip file...'
+                stash name: 'taskflow-zip', includes: 'repo-snapshot.zip'
+            }
+        }
+
+    
+        // ----------------------------------------------------
+        stage('Testing') {
+            parallel {
+                stage('Identity Service') {
+                    agent { label 'node1 || node2' }
+                    //when { changeset "identity-service/**" }
+                    steps {
+                        unstash 'taskflow-zip'
+                        sh 'unzip -oq repo-snapshot.zip'
+                        echo 'Performing testing of Identity Service'
+                        dir('identity-service') {
+                            sh 'id'
+                            sh 'mvn -f pom.xml test'
+                            sh 'zip -rq target-folder-is.zip target/**'
+                            stash name: 'identity-service-target', includes: 'target-folder-is.zip'
+                        }
+                    }
+                    post { always { cleanWs() } }
+                }
+      // --------------------------------------------------------------
+                stage('Task Service') {
+                    agent { label 'node1 || node2' }
+                    //when { changeset "task-service/**" }
+                    steps {
+                        unstash 'taskflow-zip'
+                        sh 'unzip -oq repo-snapshot.zip'
+                        echo 'Performing testing of Task Service'
+                        dir('task-service') {
+                            sh 'id'
+                            sh 'mvn -f pom.xml test'
+                             sh 'zip -rq target-folder-ts.zip target/**'
+                            stash name: 'task-service-target', includes: 'target-folder-ts.zip'
+                        }
+                    }
+                    post { always { cleanWs() } }
+                }
+        //--------------------------------------------------------------
+                stage('Taskflow Python') {
+                    agent { label 'node1 || node2' }
+                    //when { changeset "taskflow-python/**" }
+                    steps {
+                        unstash 'taskflow-zip'
+                        sh 'unzip -oq repo-snapshot.zip'
+                        echo 'Performing testing of Python Service'
+                        dir('taskflow-python') {
+                            sh '''#!/bin/bash
+                                python3 -m venv .venv
+                                source .venv/bin/activate
+                                pip install -r requirements-dev.txt
+                                python3 -m pytest --cov=. --cov-report=xml
+                            '''
+                            stash name: 'python-coverage-taskflow', includes: 'coverage.xml'
+                        }
+                    }
+                    post { always { cleanWs() } }
+                }
+            }
+        }
+
+        stage('SONARQBE code scan'){
+            agent{
+                label 'sonarqube'
+            }
+            steps{
+                unstash 'taskflow-zip'
+                unstash 'identity-service-target'
+                unstash 'task-service-target'
+                unstash 'python-coverage-taskflow'
+                 sh 'unzip -oq repo-snapshot.zip'
+                
+                dir('identity-service') {
+                    sh 'unzip -oq ../target-folder-is.zip'
+                     withSonarQubeEnv('sonar-server') {
+                        sh 'mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar'
+                    }
+                }
+
+                dir('task-service') {
+                    sh 'unzip -oq ../target-folder-ts.zip'
+                     withSonarQubeEnv('sonar-server') {
+                        sh 'mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar'
+                    }
+                }
+                dir('taskflow-python'){
+                    withSonarQubeEnv('sonar-server') {
+                        sh 'sonar-scanner -Dsonar.projectKey=taskflow-python -Dsonar.sources=. -Dsonar.python.coverage.reportPaths=coverage.xml'
+                    }
+                }
+            }
+
+
+
+        }
+
+        stage('Quality Gate'){
+            agent{
+                label 'sonarqube'
+            }
+            steps{
+                echo 'Waiting for SonarQube to return the Quality Gate status...'
+                timeout(time: 5, unit: 'MINUTES'){
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+        stage('Docker build'){
+            parallel{
+            //------------------------------------------//
+                stage('Taskflow-web docker'){
+            agent{
+                label 'node1'
+            }
+            //when { changeset "taskflow-web/**" }
+            steps{
+                echo "Building Docker image"
+                unstash 'taskflow-zip'
+                sh 'unzip -oq repo-snapshot.zip'
+
+                dir('taskflow-web'){
+                    sh 'docker build -t taskflow-web:v1 .'
+                }
+            }
+                }
+            //----------------------------------//
+             stage('identity-service docker'){
+            agent{
+                label 'node1'
+            }
+            //when { changeset "identity-service/**" }
+            steps{
+                echo "Building Docker image"
+                unstash 'taskflow-zip'
+                sh 'unzip -oq repo-snapshot.zip'
+
+                dir('identity-service'){
+                    sh 'docker build -t identity-service:v1 .'
+                }
+            }
+             }
+            //-----------------------------------------//
+             stage('task-service docker'){
+            agent{
+                label 'node1'
+            }
+           //when { changeset "task-service/**" }
+            steps{
+                echo "Building Docker image"
+                unstash 'taskflow-zip'
+                sh 'unzip -oq repo-snapshot.zip'
+
+                dir('task-service'){
+                    sh 'docker build -t task-service:v1 .'
+                }
+            }
+             }
+            //-----------------------------------------//
+             stage('taskflow-python docker'){
+            agent{
+                label 'node1'
+            }
+            //when { changeset "taskflow-python/**" }
+            steps{
+                echo "Building Docker image"
+                unstash 'taskflow-zip'
+                sh 'unzip -oq repo-snapshot.zip'
+
+                dir('taskflow-python'){
+                    sh 'docker build -t taskflow-python:v1 .'
+                }
+
+            }
+            }
+        }
+        }
+
+        stage('Trivy scan'){
+                agent{
+                    label 'node1'
+                }
+                steps{
+                    echo 'downloading template for trivy report'
+                    sh 'curl -sLo trivy-html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl'
+                    echo 'creating trivy report html using template'
+                    sh 'trivy image --format template --template "@trivy-html.tpl" -o trivy-web.html taskflow-web:v1'
+                    sh 'trivy image --format template --template "@trivy-html.tpl" -o trivy-identity.html identity-service:v1'
+                    sh 'trivy image --format template --template "@trivy-html.tpl" -o trivy-task.html task-service:v1'
+                    sh 'trivy image --format template --template "@trivy-html.tpl" -o trivy-python.html taskflow-python:v1'
+                    echo 'Trivy Scan.........'
+                    sh 'trivy image --severity HIGH,CRITICAL  taskflow-web:v1' //--exit-code 1
+                    sh 'trivy image --severity HIGH,CRITICAL identity-service:v1' //--exit-code 1
+                    sh 'trivy image --severity HIGH,CRITICAL task-service:v1' //--exit-code 1
+                    sh 'trivy image --severity HIGH,CRITICAL taskflow-python:v1'  //--exit-code 1
+                }
+                 post{
+                    always{
+                        archiveArtifacts artifacts: '*.html', allowEmptyArchive: true
+                        cleanWs()
+                    }
+            }
+        }
+        stage('Security Approval Gate') {
+            agent none 
+            steps {
+                echo 'Pausing pipeline for manual security review...'
+                input message: 'Trivy scans are complete. Please review the HTML reports. Do you want to allow this build to proceed?', 
+                      ok: 'Allow & Continue'
+            }
+        }
+        stage('Docker PUSH'){
+            agent {
+                label 'node1'
+            }
+            steps{
+                echo 'Pushing images to docker hub.....'
+                
+                withCredentials([usernamePassword(credentialsId: 'docker-cred', passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]){
+                    sh 'docker tag taskflow-web:v1 $DOCKER_USER/taskflow-web:$IMAGE_TAG'
+                    sh 'docker tag identity-service:v1 $DOCKER_USER/identity-service:$IMAGE_TAG'
+                    sh 'docker tag task-service:v1 $DOCKER_USER/task-service:$IMAGE_TAG'
+                    sh 'docker tag taskflow-python:v1 $DOCKER_USER/taskflow-python:$IMAGE_TAG'
+                    
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+                    sh 'docker push $DOCKER_USER/taskflow-web:$IMAGE_TAG'
+                    sh 'docker push $DOCKER_USER/identity-service:$IMAGE_TAG'
+                    sh 'docker push $DOCKER_USER/task-service:$IMAGE_TAG'
+                    sh 'docker push $DOCKER_USER/taskflow-python:$IMAGE_TAG'
+                }
+            }
+        }    
+    }
+}
