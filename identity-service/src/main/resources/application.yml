@@ -1,47 +1,50 @@
 server:
-  port: 8081
+  port: 8081 
 
 spring:
   application:
-    name: identity-service
+    name: identity-service 
   datasource:
-    url: jdbc:postgresql://localhost:5432/taskflow
-    username: taskflow
-    password: taskflow
+    # Use environment variables, but provide the localhost string as a fallback for local dev
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/taskflow}
+    username: ${DB_USERNAME:taskflow}
+    password: ${DB_PASSWORD:taskflow}
   jpa:
-    open-in-view: false
+    open-in-view: false 
     hibernate:
-      ddl-auto: validate
+      ddl-auto: validate 
     properties:
       hibernate:
         jdbc:
-          time_zone: UTC
+          time_zone: UTC 
   flyway:
-    enabled: true
-    locations: classpath:db/migration
+    enabled: true 
+    locations: classpath:db/migration 
 
 taskflow:
   jwt:
-    private-key-location: file:./keys/jwt-private.pem
-    key-id: taskflow-identity-1
-    issuer: http://localhost:8081
-    access-token-ttl: 15m
-    refresh-token-ttl: 30d
+    # In EKS, Kubernetes will mount your secret as a file at this path
+    private-key-location: ${JWT_PRIVATE_KEY_PATH:file:/etc/secrets/jwt/jwt-private.pem}
+    key-id: taskflow-identity-1 
+    issuer: ${JWT_ISSUER:http://localhost:8081}
+    access-token-ttl: 15m 
+    refresh-token-ttl: 30d 
   invite:
-    ttl: 7d
-    accept-base-url: http://localhost:5173/accept-invite
-  seed: true
+    ttl: 7d 
+    accept-base-url: ${FRONTEND_URL:http://localhost:5173/accept-invite}
+  # Turn seeding off by default in cloud environments so you don't overwrite production data!
+  seed: ${SEED_DB:false} 
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info 
   endpoint:
     health:
       probes:
-        enabled: true
+        enabled: true 
 
 logging:
   level:
-    org.flywaydb: info
+    org.flywaydb: info 
